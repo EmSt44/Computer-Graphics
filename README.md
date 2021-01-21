@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# Computer-Graphics
-=======
 # glTF Viewer (1TD388/1MD150)
 
 This code skeleton for a model viewer is used as starting point for the graphics programming assignments in the computer graphics courses 1TD388 and 1MD150 at Uppsala University. The skeleton provides code for reading basic scenes in the [glTF](https://github.com/KhronosGroup/glTF/) format (version 2.0), but does not support all features of the [specification](https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md). For a short introduction to the glTF 2.0 format, see this [quick reference](https://www.khronos.org/files/gltf20-reference-guide.pdf).
@@ -125,4 +122,3 @@ The application depends on the following third-party libraries, which are includ
 ### Code style
 
 This code uses the WebKit C++ style (with minor modifications) and clang-format (version 6.0) for automatic formatting.
->>>>>>> eba8130 (Initial commit (with history removed))
