@@ -33,9 +33,20 @@ struct Context {
     GLuint program;
     GLuint emptyVAO;
     float elapsedTime;
-    std::string gltfFilename = "cube_rgb.gltf";
+    std::string gltfFilename = "bunny.gltf";
+    glm::vec3 background_color;
+    glm::vec3 diffuseColor;
+    glm::vec3 lightPosition;
+    glm::vec3 specularColor;
+    glm::vec3 ambientColor;
+    float specularPower;
+    bool ortho;
+    bool shaderToggle = true; //initialize as true
     // Add more variables here...
 };
+
+// Global variable for zooming the fov of the perspective matrix
+float zoomFactor = 1.0f;
 
 // Returns the absolute path to the src/shader directory
 std::string shader_dir(void)
@@ -85,10 +96,55 @@ void draw_scene(Context &ctx)
         const gltf::Drawable &drawable = ctx.drawables[node.mesh];
 
         // Define per-object uniforms
-        // Rotation matrix for trackball
-        glm::mat4 view = glm::mat4(ctx.trackball.orient);
-        // Pass matrix to shader
+
+        //Identity matrix
+        glm::mat4 identityMatrix(1.0f);
+
+        //model matrix
+        glm::mat4 rotationMatrix = glm::mat4_cast(node.rotation);
+
+        glm::mat4 translationMatrix = glm::translate(identityMatrix, node.translation);
+
+        glm::mat4 scaleMatrix = glm::scale(identityMatrix, node.scale);
+
+        glm::mat4 model = node.matrix;
+
+        model = translationMatrix*rotationMatrix*scaleMatrix*model;
+
+        glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_model"), 1, GL_FALSE, &model[0][0]);
+
+        // View matrix
+        glm::mat4 trackballView = glm::mat4(ctx.trackball.orient);
+
+        glm::mat4 camera = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+        glm::mat4 view = camera*trackballView; //order can be switched, trackballview first = move camera, camera first = move model
+        
         glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_view"), 1, GL_FALSE, &view[0][0]);
+
+        //projection matrix
+        glm::mat4 projection = identityMatrix;
+
+        float fov = 45.0f;
+
+        //Switch between perspective and orthographic projection
+        if (ctx.ortho){
+            projection = glm::ortho(-1.5f, 1.5f, -1.5f, 1.5f, 0.0f, 10.0f);
+        }
+        else {
+           projection = glm::perspective(glm::radians(fov*zoomFactor), 1.0f, 0.1f, 100.0f); 
+        }
+        
+        glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_projection"), 1, GL_FALSE, &projection[0][0]);
+
+        //shader uniforms passing
+        glUniform3fv(glGetUniformLocation(ctx.program, "u_diffuseColor"), 1,  &ctx.diffuseColor[0]);
+        glUniform3fv(glGetUniformLocation(ctx.program, "u_lightPosition"), 1,  &ctx.lightPosition[0]);
+        glUniform3fv(glGetUniformLocation(ctx.program, "u_ambientColor"), 1,  &ctx.ambientColor[0]);
+        glUniform3fv(glGetUniformLocation(ctx.program, "u_specularColor"), 1,  &ctx.specularColor[0]);
+        glUniform1f(glGetUniformLocation(ctx.program, "u_specularPower"), ctx.specularPower);
+        //pass shader toggle
+        glUniform1i(glGetUniformLocation(ctx.program, "u_shaderToggle"), 1 &ctx.shaderToggle);
         // ...
 
         // Draw object
@@ -109,7 +165,7 @@ void do_rendering(Context &ctx)
     cg::reset_gl_render_state();
 
     // Clear color and depth buffers
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClearColor(ctx.background_color.x, ctx.background_color.y, ctx.background_color.z, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     draw_scene(ctx);
@@ -173,6 +229,16 @@ void scroll_callback(GLFWwindow *window, double x, double y)
     // Forward event to ImGui
     ImGui_ImplGlfw_ScrollCallback(window, x, y);
     if (ImGui::GetIO().WantCaptureMouse) return;
+
+    //change zoomFactor
+    zoomFactor += y * 0.1f;
+    if (zoomFactor < 0.1f) {
+        zoomFactor = 0.1f;
+    }
+    else if (zoomFactor > 3.9f) {
+        zoomFactor = 3.9f;
+    }
+
 }
 
 void resize_callback(GLFWwindow *window, int width, int height)
@@ -233,6 +299,22 @@ int main(int argc, char *argv[])
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         // ImGui::ShowDemoWindow();
+        // ImGui window
+        ImGui::Begin("Editor", NULL, 0);
+        //Shading
+        ImGui::ColorEdit3("Diffuse color", &ctx.diffuseColor[0]);
+        ImGui::ColorEdit3("Ambient color", &ctx.ambientColor[0]);
+        ImGui::ColorEdit3("Specular color", &ctx.specularColor[0]);
+        ImGui::InputFloat("Specular Power", &ctx.specularPower);
+        ImGui::InputFloat3("Light position", &ctx.lightPosition[0]);
+        //Background
+        ImGui::ColorEdit3("Background color", &ctx.background_color[0]);
+        //Projection
+        ImGui::Checkbox("Orthographic projection", &ctx.ortho);
+        //Toggle shader
+        ImGui::Checkbox("Toggle Shader", &ctx.shaderToggle);
+        ImGui::End();
+        //
         do_rendering(ctx);
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

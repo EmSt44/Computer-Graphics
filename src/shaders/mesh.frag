@@ -6,6 +6,9 @@
 
 // Fragment shader inputs
 in vec3 v_color;
+in vec3 N;
+in vec3 L;
+in vec3 V;
 // ...
 
 // Fragment shader outputs
