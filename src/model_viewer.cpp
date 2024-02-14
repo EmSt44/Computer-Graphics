@@ -42,6 +42,7 @@ struct Context {
     float specularPower;
     bool ortho;
     bool shaderToggle = true; //initialize as true
+    bool gammaToggle = true; //initialize as true
     // Add more variables here...
 };
 
@@ -145,6 +146,8 @@ void draw_scene(Context &ctx)
         glUniform1f(glGetUniformLocation(ctx.program, "u_specularPower"), ctx.specularPower);
         //pass shader toggle
         glUniform1i(glGetUniformLocation(ctx.program, "u_shaderToggle"), 1 &ctx.shaderToggle);
+        //pass gamma toggle
+        glUniform1i(glGetUniformLocation(ctx.program, "u_gammaToggle"), 1 &ctx.gammaToggle);
         // ...
 
         // Draw object
@@ -313,6 +316,7 @@ int main(int argc, char *argv[])
         ImGui::Checkbox("Orthographic projection", &ctx.ortho);
         //Toggle shader
         ImGui::Checkbox("Toggle Shader", &ctx.shaderToggle);
+        ImGui::Checkbox("Toggle Gamma Correction", &ctx.gammaToggle);
         ImGui::End();
         //
         do_rendering(ctx);
