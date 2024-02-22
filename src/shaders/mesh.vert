@@ -20,9 +20,9 @@ layout(location = 2) in vec3 a_normal;
 
 // Vertex shader outputs
 out vec3 v_color;
-out vec3 v_N; //view-space normal
-out vec3 v_L; //view-space light vector
-out vec3 v_V; //view vector
+out vec3 N; //view-space normal
+out vec3 L; //view-space light vector
+out vec3 V; //view vector
 // ...
 
 void main()
@@ -40,13 +40,13 @@ void main()
       vec3 positionEye = vec3(mv * a_position);
 
       // Calculate the view-space normal
-      v_N = normalize(mat3(mv) * a_normal);
+      N = normalize(mat3(mv) * a_normal);
 
       // Calculate the view-space light direction
-      v_L = normalize(u_lightPosition - positionEye);
+      L = normalize(u_lightPosition - positionEye);
 
       // Viewer vector
-      v_V = normalize(-positionEye);
+      V = normalize(-positionEye);
       
       v_color = 0.5 * a_normal + 0.5; // maps the normal direction to an RGB color
     }

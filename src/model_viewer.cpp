@@ -33,7 +33,7 @@ struct Context {
     GLuint program;
     GLuint emptyVAO;
     float elapsedTime;
-    std::string gltfFilename = "bunny.gltf";
+    std::string gltfFilename = "gargo.gltf";
     glm::vec3 background_color;
     glm::vec3 diffuseColor;
     glm::vec3 lightPosition;
@@ -43,6 +43,9 @@ struct Context {
     bool ortho;
     bool shaderToggle = true; //initialize as true
     bool gammaToggle = true; //initialize as true
+    uint cubemap[9];
+    bool cubemapToggle = true; //initialize as true
+    int textureIndex = 0; //initialize as 0, can be 0 to 8
     // Add more variables here...
 };
 
@@ -60,6 +63,17 @@ std::string shader_dir(void)
     return rootDir + "/src/shaders/";
 }
 
+// Returns absolute path to assets/cubemaps directory
+std::string cubemap_dir(void)
+{
+    std::string rootDir = cg::get_env_var("MODEL_VIEWER_ROOT");
+    if (rootDir.empty()) {
+        std::cout << "Error: MODEL_VIEWER_ROOT is not set." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    return rootDir + "/assets/cubemaps/";
+}
+
 // Returns the absolute path to the assets/gltf directory
 std::string gltf_dir(void)
 {
@@ -74,6 +88,16 @@ std::string gltf_dir(void)
 void do_initialization(Context &ctx)
 {
     ctx.program = cg::load_shader_program(shader_dir() + "mesh.vert", shader_dir() + "mesh.frag");
+
+    ctx.cubemap[0] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/"); //load in cubemap
+    ctx.cubemap[1] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/2048");
+    ctx.cubemap[2] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/512");
+    ctx.cubemap[3] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/128");
+    ctx.cubemap[4] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/32");
+    ctx.cubemap[5] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/8");
+    ctx.cubemap[6] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/2");
+    ctx.cubemap[7] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/0.5");
+    ctx.cubemap[8] = cg::load_cubemap(cubemap_dir() + "/RomeChurch/prefiltered/0.125");
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
@@ -138,6 +162,13 @@ void draw_scene(Context &ctx)
         
         glUniformMatrix4fv(glGetUniformLocation(ctx.program, "u_projection"), 1, GL_FALSE, &projection[0][0]);
 
+        //Cubemap
+        glActiveTexture(GL_TEXTURE0);
+
+        glBindTexture(GL_TEXTURE_CUBE_MAP, ctx.cubemap[ctx.textureIndex]);
+
+        glUniform1i(glGetUniformLocation(ctx.program, "u_cubemap"), 1 &GL_TEXTURE0);
+
         //shader uniforms passing
         glUniform3fv(glGetUniformLocation(ctx.program, "u_diffuseColor"), 1,  &ctx.diffuseColor[0]);
         glUniform3fv(glGetUniformLocation(ctx.program, "u_lightPosition"), 1,  &ctx.lightPosition[0]);
@@ -148,6 +179,8 @@ void draw_scene(Context &ctx)
         glUniform1i(glGetUniformLocation(ctx.program, "u_shaderToggle"), 1 &ctx.shaderToggle);
         //pass gamma toggle
         glUniform1i(glGetUniformLocation(ctx.program, "u_gammaToggle"), 1 &ctx.gammaToggle);
+        //pass cubemap toggle
+        glUniform1i(glGetUniformLocation(ctx.program, "u_cubemapToggle"), 1 &ctx.cubemapToggle);
         // ...
 
         // Draw object
@@ -317,6 +350,8 @@ int main(int argc, char *argv[])
         //Toggle shader
         ImGui::Checkbox("Toggle Shader", &ctx.shaderToggle);
         ImGui::Checkbox("Toggle Gamma Correction", &ctx.gammaToggle);
+        ImGui::Checkbox("Toggle reflection", &ctx.cubemapToggle);
+        ImGui::DragInt("Roughness", &ctx.textureIndex, 1.0f, 0, 8);
         ImGui::End();
         //
         do_rendering(ctx);
