@@ -22,6 +22,15 @@
 #include <cstdlib>
 #include <iostream>
 
+// Struct for representing a shadow casting point light
+struct ShadowCastingLight {
+    glm::vec3 position;      // Light source position
+    glm::mat4 shadowMatrix;  // Camera matrix for shadowmap
+    GLuint shadowmap;        // Depth texture
+    GLuint shadowFBO;        // Depth framebuffer
+    float shadowBias;        // Bias for depth comparison
+};
+
 // Struct for our application context
 struct Context {
     int width = 512;
@@ -33,7 +42,7 @@ struct Context {
     GLuint program;
     GLuint emptyVAO;
     float elapsedTime;
-    std::string gltfFilename = "gargo.gltf";
+    std::string gltfFilename = "lpshead.gltf";
     glm::vec3 background_color;
     glm::vec3 diffuseColor;
     glm::vec3 lightPosition;
@@ -46,6 +55,18 @@ struct Context {
     uint cubemap[9];
     bool cubemapToggle = true; //initialize as true
     int textureIndex = 0; //initialize as 0, can be 0 to 8
+
+    gltf::TextureList textures;
+    bool texcoordToggle;
+    bool textureToggle;
+    bool textureExists;
+
+    //Shadow mapping
+    ShadowCastingLight light;
+    GLuint shadowProgram;
+    bool showShadowmap = false;
+    bool shadowmapToggle;
+    float bias = 0.0;
     // Add more variables here...
 };
 
@@ -101,6 +122,61 @@ void do_initialization(Context &ctx)
 
     gltf::load_gltf_asset(ctx.gltfFilename, gltf_dir(), ctx.asset);
     gltf::create_drawables_from_gltf_asset(ctx.drawables, ctx.asset);
+
+    gltf::create_textures_from_gltf_asset(ctx.textures, ctx.asset);
+
+    ctx.shadowProgram =
+        cg::load_shader_program(shader_dir() + "shadow.vert", shader_dir() + "shadow.frag");
+
+    ctx.light.shadowmap = cg::create_depth_texture(512, 512);
+    ctx.light.shadowFBO = cg::create_depth_framebuffer(ctx.light.shadowmap);
+}
+
+// Update the shadowmap and shadow matrix for a light source
+void update_shadowmap(Context &ctx, ShadowCastingLight &light, GLuint shadowFBO)
+{
+    // Set up rendering to shadowmap framebuffer
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, shadowFBO);
+    if (shadowFBO) glViewport(0, 0, 512, 512);  // TODO Set viewport to shadowmap size
+    glClear(GL_DEPTH_BUFFER_BIT);               // Clear depth values to 1.0
+
+    // Set up pipeline
+    glUseProgram(ctx.shadowProgram);
+    glEnable(GL_DEPTH_TEST);  // Enable Z-buffering
+
+    // TODO Define view and projection matrices for the shadowmap camera. The
+    // view matrix should be a lookAt-matrix computed from the light source
+    // position, and the projection matrix should be a frustum that covers the
+    // parts of the scene that shall recieve shadows.
+    glm::mat4 view = glm::lookAt(light.position, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 proj = glm::perspective(glm::radians(65.0f), 1.0f, 0.1f, 100.0f);
+    glUniformMatrix4fv(glGetUniformLocation(ctx.shadowProgram, "u_view"), 1, GL_FALSE, &view[0][0]);
+    glUniformMatrix4fv(glGetUniformLocation(ctx.shadowProgram, "u_proj"), 1, GL_FALSE, &proj[0][0]);
+
+    // Store updated shadow matrix for use in draw_scene()
+    light.shadowMatrix = proj * view;
+
+    // Draw scene
+    for (unsigned i = 0; i < ctx.asset.nodes.size(); ++i) {
+        const gltf::Node &node = ctx.asset.nodes[i];
+        const gltf::Drawable &drawable = ctx.drawables[node.mesh];
+
+        // TODO Define the model matrix for the drawable
+        glm::mat4 model = glm::mat4(1.0f);
+        glUniformMatrix4fv(glGetUniformLocation(ctx.shadowProgram, "u_model"), 1, GL_FALSE, &model[0][0]);
+
+        // Draw object
+        glBindVertexArray(drawable.vao);
+        glDrawElements(GL_TRIANGLES, drawable.indexCount, drawable.indexType,
+                       (GLvoid *)(intptr_t)drawable.indexByteOffset);
+        glBindVertexArray(0);
+    }
+
+    // Clean up
+    cg::reset_gl_render_state();
+    glUseProgram(0);
+    glViewport(0, 0, ctx.width, ctx.height);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
 void draw_scene(Context &ctx)
@@ -168,6 +244,31 @@ void draw_scene(Context &ctx)
         glBindTexture(GL_TEXTURE_CUBE_MAP, ctx.cubemap[ctx.textureIndex]);
 
         glUniform1i(glGetUniformLocation(ctx.program, "u_cubemap"), 1 &GL_TEXTURE0);
+        
+        //Textures
+        const gltf::Mesh &mesh = ctx.asset.meshes[node.mesh];
+        if (mesh.primitives[0].hasMaterial) {
+            const gltf::Primitive &primitive = mesh.primitives[0];
+            const gltf::Material &material = ctx.asset.materials[primitive.material];
+            const gltf::PBRMetallicRoughness &pbr = material.pbrMetallicRoughness;
+
+            // Define material textures and uniforms
+            // ...
+
+            if (pbr.hasBaseColorTexture) {
+                GLuint texture_id = ctx.textures[pbr.baseColorTexture.index];
+                // Bind texture and define uniforms...
+                ctx.textureExists = true;
+                glActiveTexture(GL_TEXTURE1);
+                glBindTexture(GL_TEXTURE_2D, texture_id);
+                glUniform1i(glGetUniformLocation(ctx.program, "u_texture1"), 1);
+
+            } 
+            else {
+                ctx.textureExists = false;
+                //...
+            }
+        }
 
         //shader uniforms passing
         glUniform3fv(glGetUniformLocation(ctx.program, "u_diffuseColor"), 1,  &ctx.diffuseColor[0]);
@@ -181,6 +282,20 @@ void draw_scene(Context &ctx)
         glUniform1i(glGetUniformLocation(ctx.program, "u_gammaToggle"), 1 &ctx.gammaToggle);
         //pass cubemap toggle
         glUniform1i(glGetUniformLocation(ctx.program, "u_cubemapToggle"), 1 &ctx.cubemapToggle);
+        //pass texcoord toggle
+        glUniform1i(glGetUniformLocation(ctx.program, "u_texcoordToggle"), 1 &ctx.texcoordToggle);
+        //pass texture toggle
+        glUniform1i(glGetUniformLocation(ctx.program, "u_textureToggle"), 1 &ctx.textureToggle);
+        //pass texture exists
+        glUniform1i(glGetUniformLocation(ctx.program, "u_textureExists"), 1 &ctx.textureExists);
+
+        //Pass shadow map uniforms
+        glUniform4fv(glGetUniformLocation(ctx.program, "u_shadowMatrix"), 1, &ctx.light.shadowMatrix[0][0]);
+        glUniform1f(glGetUniformLocation(ctx.program,"u_bias"), ctx.bias);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, ctx.light.shadowmap);
+        glUniform1i(glGetUniformLocation(ctx.program, "u_shadowmapTexture"), 2);
         // ...
 
         // Draw object
@@ -203,6 +318,16 @@ void do_rendering(Context &ctx)
     // Clear color and depth buffers
     glClearColor(ctx.background_color.x, ctx.background_color.y, ctx.background_color.z, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+     update_shadowmap(ctx, ctx.light, ctx.light.shadowFBO);
+    draw_scene(ctx);
+
+    if (ctx.showShadowmap) {
+        // Draw shadowmap on default screen framebuffer
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT); 
+        update_shadowmap(ctx, ctx.light, 0);
+    }
 
     draw_scene(ctx);
 }
@@ -352,6 +477,11 @@ int main(int argc, char *argv[])
         ImGui::Checkbox("Toggle Gamma Correction", &ctx.gammaToggle);
         ImGui::Checkbox("Toggle reflection", &ctx.cubemapToggle);
         ImGui::DragInt("Roughness", &ctx.textureIndex, 1.0f, 0, 8);
+        ImGui::Checkbox("Visualize texture coordinates", &ctx.texcoordToggle);
+        ImGui::Checkbox("Enable texture", &ctx.textureToggle);
+        ImGui::Checkbox("Show shadowmap", &ctx.showShadowmap);
+        ImGui::Checkbox("Enable Shadowmap", &ctx.shadowmapToggle);
+        ImGui::InputFloat("bias", &ctx.bias);
         ImGui::End();
         //
         do_rendering(ctx);
